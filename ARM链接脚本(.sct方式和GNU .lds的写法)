@@ -1,0 +1,227 @@
+ARM链接脚本(.lds方式) 
+
+疑问：
+ARM链接脚本Scatter .sct方式和 GNU .lds的写法区别是?
+
+什么是链接脚本？
+就是用于告诉链接器如何把输入文件内的各个段（section）放到输出文件中，并控制输出文件中的各个段在此程序运行时的地址空间布局。
+一个程序由多个段组成，那么这些段是如何在文件中存放的，以及是如何加载到内存的相应位置进行执行的呢，这个就是通过连接脚本进行控制的。
+
+ 
+链接脚本格式：
+链接脚本由一系列命令组成，每一个命令由一个关键字和相应的参数，或者一些赋值语句等组成。命令由分号进行分割。用/* */进行注释。
+
+
+常见命令：
+ENTRY（SYMBOL）；将SYMBOL的值设置成入口地址。一般设置为_start。
+OUTPUT（FILENAME）； 定义输出文件的名字。可以用它来指定默认的输出文件名称。当然我们一般都用手动-o进行指定，如果我们没有进行手动指定的话，输出文件名称就以这个FILENAME为输出文件名。
+STARTUP（filename）；指定filename为第一个输入文件。
+OUTPUT_FORMAT(default, big, little);定义3种输出文件的格式。若有命令行选项－EB（大端），则使用第二个输出格式，有命令行指定－EL（小端），则使用第三个格式。否则使用默认的default输出格式。
+OUT_ARCH(arch);设置输出文件的体系架构。
+SECTIONS命令：最重要的，最基本的，也是最主要的命令，它告诉链接器，如何把输入文件的各个section输出到目标文件中的各个section中去。
+
+ 
+
+SECTIONS命令的格式如下：
+  SECTIONS 
+        ｛
+                一条或者多条section-command
+                或者符号赋值语句
+         ｝
+
+        section-command的常见格式如下：
+        secname [address] : [AT(LMA)] 
+        { contents } 
+
+首先中括号的选项是可选的，可以不写。
+
+secname, 指定输出的段名称。
+address, 表示程序的VMA地址。也就是表示当执行此程序的时候程序加载器应该把这个段加载到内存的哪个地址。
+         如果没有指定这个地址，链接器根据定位符号‘.‘的值设置该section的VMA。
+AT, 后面跟LMA， 这个是表示当我们把目标文件拷贝成二进制的时候，该段在文件中物理存放位置的偏移。
+         这个可以用来把多个不同的部分的代码写到一个文件中，然后烧写到flash上去，然后，程序在运行的时候再把它从AT指定的位置读到内存的另外一个位置上去。
+contents，内容里面指定把哪些文件里面的哪些段或者该文件全部输出到secname所指定的这个段中。比如*(.text)就表示所有输入文件的.text段。括号外面表示文件名称，括号里面表示这些文件里面的什么段。
+
+
+例子： 
+SECTIONS ｛
+                    . = 0x30000000;         //表示设置当前符号的值为0x3000000
+                    .text : { *(.text) }    //表示把所有输入文件的代码段集合在一起，起始运行地址就为当前定位符号的值，-- 0x30000000
+                    .rodata ALIGN(4) : { *(.rodata) }   // 在输出文件中它紧挨着.text段存放。
+            ｝
+
+
+常见的例子：
+
+（1）：
+ENTRY(_start);
+OUTPUT_FORMAT("elf32-littlearm", "elf32-bigarm", "elf32-littlearm");
+OUTPUT_ARCH(arm);
+
+ 
+
+SECTIONS
+{
+        . = 0x50008000;
+        . = ALIGN(4);
+        .text : {
+                *(.text);
+        }
+
+        . = ALIGN(4);
+        .rodata : {
+                *(.rodata);
+        }
+ 
+        . = ALIGN(4);
+        .data : {
+                *(.data);
+        }
+
+        . = ALIGN(4);
+        .bss : {
+                *(.bss);
+        }
+}
+
+这个链接脚本表示代码段从0x30000000开始加载，然后后面的.rodata,.data,.bss段都分别加在其后，并且后面的每个段的起始地址是按照4个字节对齐的。
+
+ 
+（2）： 
+ENTRY(_start);
+OUTPUT_FORMAT("elf32-littlearm", "elf32-bigarm", "elf32-littlearm");
+OUTPUT_ARCH(arm);
+
+SECTIONS
+{
+start 0x00000000 : { start.o }
+main  0x30000000 : AT(4096) { main.o hello.o }
+}
+
+上面表示把start.o的运行地址指定为0x000000, 然后main.o hello.o程序的运行地址指定为0x30000000，
+当我们把链接后生成的可执行文件通过objcopy出来之后，那么start.o的二进制代码就从文件的0偏移开始存放，
+main.o hello.o就从同一个文件的4096这个位置开始存放。当时main.o hello.o是挨着存放的，并没有把他们的相同段放在同一个段里面。
+======================================
+
+ 
+
+ENTRY(_start);
+OUTPUT_FORMAT("elf32-littlearm", "elf32-bigarm", "elf32-littlearm");
+OUTPUT_ARCH(arm);
+
+SECTIONS
+{
+        first 0x0 : {
+                led.o
+        }
+        
+        .text 0x30000000 : AT(4096) {
+                *(.text);
+        }
+        
+        .text 0x32000000 : AT(5100) {
+                a*.o(.text)
+        }
+        
+        .rodata : {
+                *(.rodata);
+        }
+        
+        .data : {
+                *(.data);
+        }
+        
+         _bss_start = .;
+        .bss : {
+                *(.bss);
+        }
+
+        _bss_end = .;
+}
+
+其实secname在copy成binary文件的时候已经没有了，这个只是在有操作系统的情况下才有用。因此在拷贝成二进制的时候，前面的段名称根本不是很重要，
+只是后面的的地址和在文件中的地址才是最关心的。
+
+
+如果我们在SECTIONS内部定义了变量，那么这个相当于在这个位置定义了一个变量，如果我们要取这个变量地址，我们需要在C语言中使用&_bss_start来访问。
+
+先看一下GNU官方网站上对.lds文件形式的完整描述：
+1、secname：段名
+3、start：本段连接（运行）的地址，如果没有使用AT（ldadr），本段存储的地址也是start。GNU网站上说start可以用任意一种描述地址的符号来描述。
+
+看一个简单的例子：
+
+/* nand.lds */
+SECTIONS { 
+    firtst 0x00000000 : { head.o init.o } 
+    second 0x30000000 : AT(4096) { main.o } 
+}
+
+以上，head.o放在0x00000000地址开始处，init.o放在head.o后面，他们的运行地址也是0x00000000，即连接和存储地址相同（没有AT指定）；
+main.o放在4096（0x1000，是AT指定的，存储地址）开始处，但是它的运行地址在0x30000000，
+运行之前需要从0x1000（加载处）复制到0x30000000（运行处），此过程也就用到了读取Nand flash。
+
+编写好的.lds文件，在用arm-linux-ld连接命令时带-Tfilename来调用执行，如
+arm-linux-ld –Tnand.lds x.o y.o –o xy.o
+
+也用-Ttext参数直接指定连接地址，如
+arm-linux-ld –Ttext 0x30000000 x.o y.o –o xy.o
+
+既然程序有了两种地址，就涉及到一些跳转指令的区别，这里正好写下来，以后万一忘记了也可查看，以前不少东西没记下来现在忘得差不多了。。。
+
+我自己经过归纳如下：
+
+（2）       ldr pc, =step1 ：该指令是从内存中的某个位置（step1）读出数据并赋给PC，同样依赖当前PC的值，但是偏移量是那个位置（step1）的连接地址（运行时的地址），所以可以用它实现从Flash到RAM的程序跳转。
+
+<p 5px;="" line-height:="" 150%"="" style="text-indent: 2em;">OUTPUT_FORMAT("elf32­littlearm", "elf32­littlearm", "elf32­littlearm")
+  ;指定输出可执行文件是elf格式,32位ARM指令,小端
+OUTPUT_ARCH(arm)
+  ;指定输出可执行文件的平台为ARM
+ENTRY(_start)
+  ;指定输出可执行文件的起始代码段为_start.
+
+SECTIONS
+
+{
+
+        . = 0x00000000 ; 从0x0位置开始
+
+        . = ALIGN(4) ; 代码以4字节对齐
+
+        .text : ;指定代码段
+
+        {
+
+          cpu/arm920t/start.o (.text) ; 代码的第一个代码部分
+
+          *(.text) ;其它代码部分
+
+        }
+
+        . = ALIGN(4) 
+
+        .rodata : { *(.rodata) } ;指定只读数据段
+
+        . = ALIGN(4);
+
+        .data : { *(.data) } ;指定读/写数据段
+
+        . = ALIGN(4);
+
+        .got : { *(.got) } ;指定got段, got段式是uboot自定义的一个段, 非标准段
+
+        __u_boot_cmd_start = . ;把__u_boot_cmd_start赋值为当前位置, 即起始位置
+
+        .u_boot_cmd : { *(.u_boot_cmd) } ;指定u_boot_cmd段, uboot把所有的uboot命令放在该段.
+
+        __u_boot_cmd_end = .;把__u_boot_cmd_end赋值为当前位置,即结束位置
+
+        . = ALIGN(4);
+
+        __bss_start = .; 把__bss_start赋值为当前位置,即bss段的开始位置
+
+        .bss : { *(.bss) }; 指定bss段
+
+        _end = .; 把_end赋值为当前位置,即bss段的结束位置
+
+}
