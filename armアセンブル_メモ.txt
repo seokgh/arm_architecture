@@ -150,3 +150,37 @@ swi?
 システムコール番号にr7レジスタ、
 引数にr0～r6レジスタを使い、
 戻り値はr0レジスタにセットされる。
+
+
+
+
+
+
+
+
+
+
+
+AArch64 Instruction Set
+---------------------------------------------------------------
+Load pair and store pair
+---------------------------------------------------------------
+So far, we have discussed the load and store of a single register. A64 also has load (LDP) and store pair (STP) instructions.
+
+These pair instructions transfer two registers to and from memory. The first instruction loads [X0] into W3, and loads [X0 + 4] into W7:
+
+LDP        W3, W7, [X0]
+
+This second instruction stores D0 into [X4] and stores D1 to [X4 + 8]:
+
+STP        D0, D1, [X4]            
+
+Load and store pair instructions are often used for pushing, and popping off the stack. This first instruction pushes X0 and X1 onto the stack:
+
+STP        X0, X1, [SP, #-16]!
+
+This second instruction pops X0 and X1 from the stack:
+
+LDP        X0, X1, [SP], #16
+
+Remember that in AArch64 the stack-pointer must be 128-bit aligned.
